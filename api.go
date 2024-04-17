@@ -9,8 +9,12 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// TIP : Order or arguments is very important in Go-lang, do not change them 
+// http.ResponseWriter, *http.Request must come in this order because a 
+// http.HandlerFunc type must be satisfied and that has this order of 
+// elements
 
-type APIFunc func(http.ResponseWriter, *httpRequesst) error
+type APIFunc func(http.ResponseWriter, *http.Request) error
 
 type APIServer struct {
     listenAddr string
@@ -33,9 +37,10 @@ func WriteJSON(w http.ResponseWriter, status int, v any) error {
 func makeHTTPHandleFunc(f APIFunc) http.HandlerFunc {
     // Function is an argument in the previous function, when this happens
     // we do not pass arguments
-    return func(r *http.Request, w http.ResponseWriter){
+    return func(w http.ResponseWriter, r *http.Request) {
         if err := f(w, r); err != nil {
-            WriteJSON(w, http.StatusBadRequest, APIError{Error: err.Error())}
+            // Handling error for handler
+            WriteJSON(w, http.StatusBadRequest, APIError{Error: err.Error()})
         }
     }
 }
@@ -55,32 +60,34 @@ func (s *APIServer) Run() {
     http.ListenAndServe(s.listenAddr, router)
 }
 
-// Primary handler
-func (s *APIServer) handleAccount(r *http.Request, w http.ResponseWriter) error {
+// Primary handler - With MUX router (unlike Gin-Gonic) we cannot specify whether
+// the request is a  GET, POST or DELETE. Hence, we must handle them explicitly
+// with a primary function handler
+func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error {
     if r.Method == "GET" {
-        return s.handleGetAccount(r, w)
+        return s.handleGetAccount(w, r)
     } 
     if r.Method == "POST" {
-        return s.handleCreateAccount(r, w)
+        return s.handleCreateAccount(w, r)
     }
     if r.Method == "DELETE" {
-        return s.handleDeleteAccount(r, w)
+        return s.handleDeleteAccount(w, r)
     }
     return fmt.Errorf("Method not allowed: %s", r.Method)
 }
 
-func (s *APIServer) handleGetAccount(r *http.Request, w http.ResponseWriter) error {
+func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) error {
     return nil
 }
 
-func (s *APIServer) handleCreateAccount(r *http.Request, w http.ResponseWriter) error {
+func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) error {
     return nil
 }
 
-func (s *APIServer) handleDeleteAccount(r *http.Request, w http.ResponseWriter) error {
+func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) error {
     return nil
 }
 
-func (s *APIServer) handleTransfer(r *http.Request, w http.ResponseWriter) error {
+func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error {
     return nil
 }
