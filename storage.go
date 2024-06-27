@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+    "github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
 
@@ -25,7 +26,14 @@ type PostgresStore struct {
 }
 
 func NewPostgresStore() (*PostgresStore, error) {
+    // Incase environment variables do not load properly, then handle the error
+    err := godotenv.Load()
+    if err != nil {
+        fmt.Println("Error loading .env file", err)
+        return nil, err
+    }
     connStr := os.Getenv("DATABASE_URL")
+    fmt.Printf("URL : %v\n", connStr)
     db, err := sql.Open("postgres", connStr)
     // Check for error during connection
     if err != nil {
@@ -35,7 +43,6 @@ func NewPostgresStore() (*PostgresStore, error) {
     if err := db.Ping(); err != nil {
         return nil, err
     }
-
     // Return
     return &PostgresStore{
         db: db,
@@ -43,6 +50,8 @@ func NewPostgresStore() (*PostgresStore, error) {
 }
 
 func (s *PostgresStore) Init() error {
+    // for initializing a database, there should be a default accounts table 
+    // ready to accept incoming data.
     return s.CreateAccountTable()
 }
 
@@ -67,7 +76,7 @@ func (s *PostgresStore) CreateAccount(acc *Account) error {
     (first_name, last_name, number, balance, created_at)
     VALUES 
     ($1, $2, $3, $4, $5)`
-    resp, err := s.db.Query(
+    _, err := s.db.Query(
         query, 
         acc.FirstName, 
         acc.LastName, 
@@ -77,8 +86,6 @@ func (s *PostgresStore) CreateAccount(acc *Account) error {
     if err != nil {
         return err
     }
-    fmt.Printf("%+v\n", resp)
-        
     return nil
 }
 
@@ -94,7 +101,7 @@ func (s *PostgresStore) GetAccountByID(id int) (*Account, error) {
     return nil, nil
 }
 
-func (s *PostgresStore) GetAccount() ([]*Account, error) {
+func (s *PostgresStore) GetAccounts() ([]*Account, error) {
     rows, err := s.db.Query("SELECT * FROM account")
     if err != nil {
         return nil, err
@@ -110,11 +117,10 @@ func (s *PostgresStore) GetAccount() ([]*Account, error) {
             &account.Number,
             &account.Balance,
             &account.CreatedAt) 
-            if err != nil {
-                return nil, err
-            }
-
-            accounts = append(accounts, account)
+        if err != nil {
+            return nil, err
         }
+        accounts = append(accounts, account)
+    }
     return accounts, nil
 }

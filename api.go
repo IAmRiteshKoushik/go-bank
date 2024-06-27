@@ -31,7 +31,7 @@ func (s *APIServer) Run() {
 	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
     router.HandleFunc("/account/{id}", makeHTTPHandleFunc(s.handleGetAccountByID))
 
-	log.Println("JSON api server running on PORT: ", s.listenAddr)
+	log.Println("JSON api server running on PORT", s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router)
 }
 
@@ -82,7 +82,8 @@ func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) 
     if err := s.store.CreateAccount(account); err != nil {
         return err
     }
-    // FIXME : Currently the database does not tell you whether the account 
+
+    // FIX ME : Currently the database does not tell you whether the account 
     // is successfully created or not as there is only creation and not 
     // fetching of data. This will most probably require a fix in the future
 
