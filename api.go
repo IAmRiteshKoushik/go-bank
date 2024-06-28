@@ -217,6 +217,8 @@ func getID(r *http.Request) (int, error) {
 }
 
 func permissionDenied(w http.ResponseWriter){
+    // it is a good idea to setup some form of logging and send it over to your 
+    // logging / monitoring tools - DataDog (or) Grafana etc.
     WriteJSON(w, http.StatusForbidden, APIError{ Error: "permission denied" })
 }
 
@@ -227,15 +229,45 @@ func withJWT(handlerFunc http.HandlerFunc, s Storage) http.HandlerFunc {
         fmt.Println("Calling JWT Auth Middleware")
         tokenString := r.Header.Get("x-jwt-token")
         token, err := validateJWT(tokenString)
+        // Validate JWT only checks if the signing method works but it does 
+        // return back the token in both cases which is a struct that has a 
+        // 'Valid' field. An invalid token does not generate an error
         if err != nil {
             permissionDenied(w)
             return
         }
+        // Here, we need to check if the token is valid or not by accessing the 
+        // field inside the token-struct. After we have done so, we can proceed 
+        // and check
         if !token.Valid {
             permissionDenied(w)
             return
         }
-
+        userID, err := getID(r)
+        if err != nil {
+            permissionDenied(w)
+            return
+        }
+        account, err := s.GetAccountByID(userID)
+        if err != nil {
+            return
+        }
+        // the claims are in string-format and need to be converted to a 
+        // map[string]interface{} - format before we can access it.
+        claims := token.Claims.(jwt.MapClaims)
+        // PROBLEM : During conversion, the AccountNumber becomes a float64 
+        // which falls under the interface{} implementation. But the account 
+        // number that we have retrived from the database falls under the int64
+        // So, in order to check the equality, we need to convert the AccountNum 
+        // to int64, but we cannot do this directly because the type of AccountNum 
+        // is decided in the run-time and not during compile-time. In-order to 
+        // make the conversion possible, we mut first type-assert it into float64 
+        // and then make the conversion to int64. In-case the float64 type assetion
+        // fails, the program will panic (POTENTIAL FAILURE POINT)
+        if account.Number != int64(claims["AccountNumber"].(float64)){
+            permissionDenied(w)
+            return
+        }
 
         handlerFunc(w, r)
     }
