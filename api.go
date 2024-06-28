@@ -52,6 +52,7 @@ func (s *APIServer) Run() {
 	http.ListenAndServe(s.listenAddr, router)
 }
 
+// Sample Account Number : 532204 (used during testing)
 func (s *APIServer) handleLogin(w http.ResponseWriter, r *http.Request) error {
     if r.Method != "POST"{
         return fmt.Errorf("method not allowed %s", r.Method)
@@ -62,8 +63,25 @@ func (s *APIServer) handleLogin(w http.ResponseWriter, r *http.Request) error {
     }
 
     // search for the user 
+    acc, err := s.store.GetAccountByNumber(int(req.Number))
+    if err != nil {
+        return err
+    }
 
-    return WriteJSON(w, http.StatusOK, req)
+    if !acc.ValidPassword(req.Password) {
+        return fmt.Errorf("Not authenticated")
+    }
+
+    token, err := createJWT(acc)
+    if err != nil {
+        return err
+    }
+    resp := LoginResponse{
+        Token: token,
+        Number: acc.Number,
+    }
+
+    return WriteJSON(w, http.StatusOK, resp)
 }
 
 // Primary handler - With MUX router (unlike Gin-Gonic) we cannot specify whether

@@ -16,7 +16,6 @@ import (
 type Storage interface {
     CreateAccount(*Account) error
     DeleteAccount(int) error
-    UpdateAccount(*Account) error
     GetAccounts()([]*Account, error)
     GetAccountByID(int) (*Account, error)
     GetAccountByNumber(int) (*Account, error)
@@ -61,6 +60,7 @@ func (s *PostgresStore) CreateAccountTable() error {
         first_name VARCHAR(50),
         last_name VARCHAR(50),
         number SERIAL,
+        encryptedPAssword VARCHAR(255),
         balance SERIAL,
         created_at TIMESTAMP
     )`
@@ -73,23 +73,20 @@ func (s *PostgresStore) CreateAccountTable() error {
 func (s *PostgresStore) CreateAccount(acc *Account) error {
     query := `
     INSERT INTO account 
-    (first_name, last_name, number, balance, created_at)
+    (first_name, last_name, number, balance, created_at, encryptedPassword)
     VALUES 
-    ($1, $2, $3, $4, $5)`
+    ($1, $2, $3, $4, $5, $6)`
     _, err := s.db.Query(
         query, 
         acc.FirstName, 
         acc.LastName, 
         acc.Number, 
         acc.Balance, 
-        acc.CreatedAt)
+        acc.CreatedAt,
+        acc.EncryptedPassword)
     if err != nil {
         return err
     }
-    return nil
-}
-
-func (s *PostgresStore) UpdateAccount(*Account) error {
     return nil
 }
 
@@ -148,7 +145,8 @@ func (s *PostgresStore) GetAccounts() ([]*Account, error) {
     return accounts, nil
 }
 
-// -- HELPER FUNCTION useful for getting things from SQL rows 
+// -- HELPER FUNCTION 
+// Useful for getting things from SQL rows 
 // and moving them into Account struct and returning a pointer.
 // Will be useful in other functions as well.
 func scanIntoAccount(rows *sql.Rows) (*Account, error){
@@ -158,6 +156,7 @@ func scanIntoAccount(rows *sql.Rows) (*Account, error){
         &account.FirstName,
         &account.LastName,
         &account.Number,
+        &account.EncryptedPassword,
         &account.Balance,
         &account.CreatedAt)
     if err != nil {
