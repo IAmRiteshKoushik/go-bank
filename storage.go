@@ -33,7 +33,6 @@ func NewPostgresStore() (*PostgresStore, error) {
         return nil, err
     }
     connStr := os.Getenv("DATABASE_URL")
-    fmt.Printf("URL : %v\n", connStr)
     db, err := sql.Open("postgres", connStr)
     // Check for error during connection
     if err != nil {

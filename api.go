@@ -6,8 +6,10 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+    "os"
 
 	"github.com/gorilla/mux"
+    jwt "github.com/golang-jwt/jwt/v4"
 )
 
 // TIP : Order of arguments is very important in Go-lang, do not change them
@@ -31,7 +33,7 @@ func (s *APIServer) Run() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
-    router.HandleFunc("/account/{id}", makeHTTPHandleFunc(s.handleGetAccountByID))
+    router.HandleFunc("/account/{id}", withJWT(makeHTTPHandleFunc(s.handleGetAccountByID)))
 
     // Here, you can do "/transfer/{accountNumber}" but then if anyone checks 
     // the browser history they would be able to find the account number to 
@@ -40,7 +42,7 @@ func (s *APIServer) Run() {
     // have to inspect the Network tab when this particular request is going in 
     // order to know. And this information gets deleted and not stored in the
     // browser cache.
-    router.HandleFunc("/transfer", makeHTTPHandleFunc(s.handleTransfer))
+    router.HandleFunc("/transfer", withJWT(makeHTTPHandleFunc(s.handleTransfer)))
 
     // NOTE : AccountNumbers are safe and not hackable but that being said, in 
     // order to ensure better privacy, it is better to not have them exposed.
@@ -209,4 +211,37 @@ func getID(r *http.Request) (int, error) {
         return id, fmt.Errorf("Invalid id given %s", idStr)
     }
     return id, nil
+}
+
+// A decorator function which is going to sit on top of handler functions 
+// and authenticate before processing requests.
+func withJWT(handlerFunc http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request){
+        fmt.Println("Calling JWT Auth Middleware")
+        tokenString := r.Header.Get("x-jwt-token")
+        _, err := validateJWT(tokenString)
+        if err != nil {
+            WriteJSON(w, http.StatusForbidden, APIError{ Error: "invalid token" })
+            return
+        }
+        // if token is valid, call the handler function
+        handlerFunc(w, r)
+    }
+}
+
+func validateJWT(tokenString string) (*jwt.Token, error) {
+    secret := os.Getenv("JWT_SECRET")
+
+    // anonymous function is passed inside the jwt.Parse() function. If token 
+    // is parsed properly, then you return back the
+    return jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error){
+        // Don't forget to validate the alg is what you expect:
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
+        }
+
+        // HMAC-SampleSecret is a []byte containing your secret, 
+        // eg: []byte("my_secret_key")
+        return []byte(secret), nil
+    })
 }
