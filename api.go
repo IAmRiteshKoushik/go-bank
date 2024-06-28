@@ -33,6 +33,18 @@ func (s *APIServer) Run() {
 	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
     router.HandleFunc("/account/{id}", makeHTTPHandleFunc(s.handleGetAccountByID))
 
+    // Here, you can do "/transfer/{accountNumber}" but then if anyone checks 
+    // the browser history they would be able to find the account number to 
+    // which a transfer has been made. On the contrary if we do not specify that 
+    // and manage it as a POST request instead of a GET request, then we would 
+    // have to inspect the Network tab when this particular request is going in 
+    // order to know. And this information gets deleted and not stored in the
+    // browser cache.
+    router.HandleFunc("/transfer", makeHTTPHandleFunc(s.handleTransfer))
+
+    // NOTE : AccountNumbers are safe and not hackable but that being said, in 
+    // order to ensure better privacy, it is better to not have them exposed.
+
 	log.Println("JSON api server running on PORT", s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router)
 }
@@ -143,7 +155,16 @@ func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error {
-	return nil
+    transferReq := new(TransferRequest)
+    if err := json.NewDecoder(r.Body).Decode(transferReq); err != nil {
+        return err
+    }
+    // You need to clear the previous request before waiting for a new request
+    // If this is not done, there will be a resource leak.
+    defer r.Body.Close()
+
+    // FIX : We need to call in storage methods
+    return WriteJSON(w,http.StatusOK, transferReq)
 }
 
 // -- Helper Functions
