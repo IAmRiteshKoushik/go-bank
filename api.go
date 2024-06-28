@@ -33,7 +33,7 @@ func (s *APIServer) Run() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
-    router.HandleFunc("/account/{id}", withJWT(makeHTTPHandleFunc(s.handleGetAccountByID)))
+    router.HandleFunc("/account/{id}", withJWT(makeHTTPHandleFunc(s.handleGetAccountByID), s.store))
 
     // Here, you can do "/transfer/{accountNumber}" but then if anyone checks 
     // the browser history they would be able to find the account number to 
@@ -42,7 +42,7 @@ func (s *APIServer) Run() {
     // have to inspect the Network tab when this particular request is going in 
     // order to know. And this information gets deleted and not stored in the
     // browser cache.
-    router.HandleFunc("/transfer", withJWT(makeHTTPHandleFunc(s.handleTransfer)))
+    router.HandleFunc("/transfer", withJWT(makeHTTPHandleFunc(s.handleTransfer), s.store))
 
     // NOTE : AccountNumbers are safe and not hackable but that being said, in 
     // order to ensure better privacy, it is better to not have them exposed.
@@ -133,9 +133,12 @@ func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) 
         return err
     }
 
-    // FIX ME : Currently the database does not tell you whether the account 
-    // is successfully created or not as there is only creation and not 
-    // fetching of data. This will most probably require a fix in the future
+    // After the account is successfully created, create a JWT token
+    tokenString, err := createJWT(account)
+    if err != nil {
+        return err
+    }
+    fmt.Println("JWT TOken: ", tokenString)
 
     return WriteJSON(w, http.StatusOK, account)
 }
@@ -213,18 +216,27 @@ func getID(r *http.Request) (int, error) {
     return id, nil
 }
 
+func permissionDenied(w http.ResponseWriter){
+    WriteJSON(w, http.StatusForbidden, APIError{ Error: "permission denied" })
+}
+
 // A decorator function which is going to sit on top of handler functions 
 // and authenticate before processing requests.
-func withJWT(handlerFunc http.HandlerFunc) http.HandlerFunc {
+func withJWT(handlerFunc http.HandlerFunc, s Storage) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request){
         fmt.Println("Calling JWT Auth Middleware")
         tokenString := r.Header.Get("x-jwt-token")
-        _, err := validateJWT(tokenString)
+        token, err := validateJWT(tokenString)
         if err != nil {
-            WriteJSON(w, http.StatusForbidden, APIError{ Error: "invalid token" })
+            permissionDenied(w)
             return
         }
-        // if token is valid, call the handler function
+        if !token.Valid {
+            permissionDenied(w)
+            return
+        }
+
+
         handlerFunc(w, r)
     }
 }
@@ -235,13 +247,35 @@ func validateJWT(tokenString string) (*jwt.Token, error) {
     // anonymous function is passed inside the jwt.Parse() function. If token 
     // is parsed properly, then you return back the
     return jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error){
-        // Don't forget to validate the alg is what you expect:
+        // If the signing method does not match with the signing method setup 
+        // in the backend then an error is generated and returned
         if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
             return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
         }
 
-        // HMAC-SampleSecret is a []byte containing your secret, 
-        // eg: []byte("my_secret_key")
+        // if the signing method is valid, then we need to check if the token 
+        // is actually valid or not. Basically you are checkign at two levels:
+        // 1. Checking if the signing algorithm is alright (VULNERABILITY)
+        // 2. Checking if the token is alright
         return []byte(secret), nil
     })
+}
+
+// -- Sample JWT String (valid)
+// eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBY2NvdW50TnVtYmVyIjo0MDMxMzgsIkV4cGlyZXNBdCI6MTUwMDB9.A2tRhYooBvzCUL7fKtj87TWTu_MGe4LwYFz2ies1CAc
+
+func createJWT(account *Account) (string, error) {
+    claims := &jwt.MapClaims{
+        "ExpiresAt": 15000,
+        "AccountNumber": account.Number,
+    }
+    // Get the secret from environment variables
+    secret := os.Getenv("JWT_SECRET")
+    // Mention the claims and the signing method
+    token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+    // Return back the token after signing it with the secret
+    // the secret should be a byte-slice
+    return token.SignedString([]byte(secret))
+
 }
