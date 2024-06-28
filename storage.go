@@ -94,33 +94,62 @@ func (s *PostgresStore) UpdateAccount(*Account) error {
 }
 
 func (s *PostgresStore) DeleteAccount(id int) error {
-    return nil
+    // After deleting a field, you need not return the deleted field but just 
+    // the confirmation of whether they have been deleted or not.
+    _, err := s.db.Query("DELETE FROM account WHERE id = $1", id)
+    return err
 }
 
 func (s *PostgresStore) GetAccountByID(id int) (*Account, error) {
-    return nil, nil
+    rows, err := s.db.Query("SELECT * FROM account WHERE id = $1", id)
+    if err != nil {
+        return nil, err
+    }
+    for rows.Next(){
+        // scanIntoAccount directly returns an account pointer and error
+        return scanIntoAccount(rows)
+    }
+    // if there was no rows.Next() then the table did not contain 
+    // a single row which matched the particular ID, in which case,
+    // we do not need to return any pointer but we must return an error
+    return nil, fmt.Errorf("account %d not found", id)
 }
 
 func (s *PostgresStore) GetAccounts() ([]*Account, error) {
+    // Fetching all rows from the account table 
     rows, err := s.db.Query("SELECT * FROM account")
     if err != nil {
         return nil, err
     }
 
+    // After fetching everything from the account table,
+    // we need to move everything to the slice of account 
+    // pointers. 
     accounts := []*Account{}
     for rows.Next() {
-        account := new(Account) 
-        err := rows.Scan(
-            &account.ID,
-            &account.FirstName,
-            &account.LastName,
-            &account.Number,
-            &account.Balance,
-            &account.CreatedAt) 
+        account, err := scanIntoAccount(rows)
         if err != nil {
             return nil, err
         }
         accounts = append(accounts, account)
     }
     return accounts, nil
+}
+
+// -- HELPER FUNCTION useful for getting things from SQL rows 
+// and moving them into Account struct and returning a pointer.
+// Will be useful in other functions as well.
+func scanIntoAccount(rows *sql.Rows) (*Account, error){
+    account := new(Account)
+    err := rows.Scan(
+        &account.ID,
+        &account.FirstName,
+        &account.LastName,
+        &account.Number,
+        &account.Balance,
+        &account.CreatedAt)
+    if err != nil {
+        return nil, err
+    }
+    return account, nil
 }
