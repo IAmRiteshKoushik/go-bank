@@ -32,6 +32,7 @@ type APIError struct {
 func (s *APIServer) Run() {
 	router := mux.NewRouter()
 
+    router.HandleFunc("/login", makeHTTPHandleFunc(s.handleLogin))
 	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
     router.HandleFunc("/account/{id}", withJWT(makeHTTPHandleFunc(s.handleGetAccountByID), s.store))
 
@@ -49,6 +50,20 @@ func (s *APIServer) Run() {
 
 	log.Println("JSON api server running on PORT", s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router)
+}
+
+func (s *APIServer) handleLogin(w http.ResponseWriter, r *http.Request) error {
+    if r.Method != "POST"{
+        return fmt.Errorf("method not allowed %s", r.Method)
+    }
+    req := new(LoginRequest)
+    if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+        return err
+    }
+
+    // search for the user 
+
+    return WriteJSON(w, http.StatusOK, req)
 }
 
 // Primary handler - With MUX router (unlike Gin-Gonic) we cannot specify whether
@@ -124,21 +139,25 @@ func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) 
     // Using the new keyword so that we get a reference to the structure and 
     // not the actual structure. (Reduces memory overhead). Also, the Decode
     // method takes in a pointer to a structure
-    createAccountReq := new(CreateAccountRequest)
-    if err := json.NewDecoder(r.Body).Decode(createAccountReq); err != nil {
+    req := new(CreateAccountRequest)
+    if err := json.NewDecoder(r.Body).Decode(req); err != nil {
         return err
     }
-    account := NewAccount(createAccountReq.FirstName, createAccountReq.LastName)
+    account, err := NewAccount(req.FirstName, req.LastName, req.Password)
+    if err != nil {
+        return err
+    }
     if err := s.store.CreateAccount(account); err != nil {
         return err
     }
 
+    // -- OUTDATED
     // After the account is successfully created, create a JWT token
-    tokenString, err := createJWT(account)
-    if err != nil {
-        return err
-    }
-    fmt.Println("JWT TOken: ", tokenString)
+    // tokenString, err := createJWT(account)
+    // if err != nil {
+    //     return err
+    // }
+    // fmt.Println("JWT TOken: ", tokenString)
 
     return WriteJSON(w, http.StatusOK, account)
 }
